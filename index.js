@@ -17,26 +17,45 @@ app.post('/scrape-grades', async (req, res) => {
 
   let browser;
   try {
-    // Launch using bundled serverless binary
     browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
+      args: [
+        ...chromium.args,
+        '--disable-blink-features=AutomationControlled'
+      ],
+      defaultViewport: { width: 1280, height: 800 },
       executablePath: await chromium.executablePath(),
       headless: chromium.headless,
     });
 
     const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9'
+    });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
 
-    await page.goto(`${PS_BASE_URL}/public/home.html`, { waitUntil: 'networkidle2', timeout: 30000 });
+    // Load login page using domcontentloaded instead of networkidle2
+    await page.goto(`${PS_BASE_URL}/public/home.html`, { 
+      waitUntil: 'domcontentloaded', 
+      timeout: 20000 
+    });
 
-    await page.type('#fieldAccount', username);
-    await page.type('#fieldPassword', password);
+    // Wait for form inputs to render
+    await page.waitForSelector('#fieldAccount', { timeout: 10000 });
+    await page.type('#fieldAccount', username, { delay: 30 });
+    await page.type('#fieldPassword', password, { delay: 30 });
 
+    // Submit form and await DOM render
     await Promise.all([
       page.click('#btn-enter-sign-in'),
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => null)
     ]);
+
+    // Wait until either grade table or login error message appears in DOM
+    await page.waitForFunction(() => {
+      return document.querySelector('tr[id^="ccid_"]') || 
+             document.body.innerText.includes('Invalid Username or Password');
+    }, { timeout: 15000 }).catch(() => null);
 
     const pageContent = await page.content();
     if (pageContent.includes('Invalid Username or Password')) {
@@ -44,8 +63,7 @@ app.post('/scrape-grades', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    await page.waitForSelector('td[align="left"]', { timeout: 10000 }).catch(() => null);
-
+    // Extract course grades
     const grades = await page.evaluate(() => {
       const results = [];
       const rows = document.querySelectorAll('tr[id^="ccid_"]');
