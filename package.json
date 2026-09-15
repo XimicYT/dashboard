@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "postinstall": "puppeteer install"
+    "start": "node index.js"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^123.0.0",
     "express": "^4.19.2",
-    "puppeteer": "^22.6.0"
+    "puppeteer-core": "^22.6.0"
   },
   "engines": {
     "node": ">=18.0.0"
