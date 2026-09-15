@@ -1,10 +1,10 @@
 {
   "name": "powerschool-scraper",
   "version": "1.0.0",
-  "description": "Puppeteer service to scrape PowerSchool grades for Google Apps Script",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "postinstall": "puppeteer install"
   },
   "dependencies": {
     "express": "^4.19.2",
