@@ -1,5 +1,6 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
 
 const app = express();
 app.use(express.json());
@@ -16,50 +17,35 @@ app.post('/scrape-grades', async (req, res) => {
 
   let browser;
   try {
-    // Launch headless Chromium with Linux flags required by Render free tier
+    // Launch using bundled serverless binary
     browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ]
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
-
-    // Emulate desktop browser to pass WAF check
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-    // 1. Load login page
     await page.goto(`${PS_BASE_URL}/public/home.html`, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // 2. Fill login inputs
     await page.type('#fieldAccount', username);
     await page.type('#fieldPassword', password);
 
-    // 3. Submit login form and await redirect
     await Promise.all([
       page.click('#btn-enter-sign-in'),
       page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
     ]);
 
-    // Check for bad credentials
     const pageContent = await page.content();
     if (pageContent.includes('Invalid Username or Password')) {
       await browser.close();
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Wait for schedule table to load
     await page.waitForSelector('td[align="left"]', { timeout: 10000 }).catch(() => null);
 
-    // 4. Scrape courses and grades directly from browser DOM
     const grades = await page.evaluate(() => {
       const results = [];
       const rows = document.querySelectorAll('tr[id^="ccid_"]');
